@@ -1,0 +1,65 @@
+name: reengajamento-moodle
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # painel web (guest / guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    environment:
+      MP_DATABASE: /data/mailpit.db   # caixa de entrada sobrevive ao stop/start da demo
+    volumes:
+      - dados-mailpit:/data
+    ports:
+      - "8025:8025"     # caixa de entrada web
+      - "1025:1025"     # SMTP
+
+  moodle-mock:
+    build: ./moodle-mock
+    environment:
+      MOODLE_TOKEN: ${MOODLE_TOKEN:-token-demo}
+    ports:
+      - "8000:8000"
+
+  acompanhamento:
+    build: ./acompanhamento
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2F
+    ports:
+      - "8081:8081"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notificacoes:
+    build: ./notificacoes
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2F
+      BANCO_PATH: /dados/notificacoes.db
+    volumes:
+      - dados-notificacoes:/dados   # registro de envios sobrevive a reinícios
+    ports:
+      - "8082:8082"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dados-notificacoes:
+  dados-mailpit:
